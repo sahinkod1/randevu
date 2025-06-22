@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesaj Şifreleme</title>
+    <style>
+        body{ font-family: Arial, sans-serif; margin:20px; }
+        textarea{ width:100%; height:150px; }
+        .hidden { display:none; }
+    </style>
+</head>
+<body>
+    <h2>Mesaj Şifreleme Uygulaması</h2>
+    <label for="level">Seviye:</label>
+    <select id="level" onchange="togglePassword()">
+        <option value="1">Kolay</option>
+        <option value="2">Orta</option>
+        <option value="3">Zor</option>
+    </select>
+    <div id="passwordBox" class="hidden">
+        <label for="password">Şifre:</label>
+        <input type="password" id="password">
+    </div>
+    <div>
+        <h4>Mesaj</h4>
+        <textarea id="message"></textarea>
+    </div>
+    <button onclick="process('encrypt')">Şifrele</button>
+    <button onclick="process('decrypt')">Çöz</button>
+    <div>
+        <h4>Sonuç</h4>
+        <textarea id="result" readonly></textarea>
+    </div>
+<script>
+function togglePassword(){
+    var level=document.getElementById('level').value;
+    document.getElementById('passwordBox').className=(level==='1')?'hidden':'';
+}
+
+function caesar(str, shift, decrypt){
+    var out='';
+    if(decrypt) shift=26-shift;
+    for(var i=0;i<str.length;i++){
+        var c=str.charCodeAt(i);
+        if(c>=65&&c<=90) out+=String.fromCharCode((c-65+shift)%26+65);
+        else if(c>=97&&c<=122) out+=String.fromCharCode((c-97+shift)%26+97);
+        else out+=str.charAt(i);
+    }
+    return out;
+}
+
+function xorEncrypt(text,key){
+    var result='';
+    for(var i=0;i<text.length;i++){
+        result+=String.fromCharCode(text.charCodeAt(i)^key.charCodeAt(i%key.length));
+    }
+    return btoa(result);
+}
+function xorDecrypt(data,key){
+    data=atob(data);
+    var result='';
+    for(var i=0;i<data.length;i++){
+        result+=String.fromCharCode(data.charCodeAt(i)^key.charCodeAt(i%key.length));
+    }
+    return result;
+}
+
+async function aesEncrypt(msg,password){
+    var enc=new TextEncoder();
+    var pwUtf8=enc.encode(password);
+    var pwHash=await crypto.subtle.digest('SHA-256',pwUtf8);
+    var iv=crypto.getRandomValues(new Uint8Array(12));
+    var key=await crypto.subtle.importKey('raw',pwHash,'AES-GCM',false,['encrypt']);
+    var ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,enc.encode(msg));
+    var buff=new Uint8Array(iv.length+ct.byteLength);
+    buff.set(iv,0); buff.set(new Uint8Array(ct),iv.length);
+    return btoa(String.fromCharCode.apply(null,buff));
+}
+async function aesDecrypt(data,password){
+    var raw=atob(data); var buff=new Uint8Array(raw.length);
+    for(var i=0;i<raw.length;i++) buff[i]=raw.charCodeAt(i);
+    var iv=buff.slice(0,12); var ct=buff.slice(12);
+    var enc=new TextEncoder();
+    var pwHash=await crypto.subtle.digest('SHA-256',enc.encode(password));
+    var key=await crypto.subtle.importKey('raw',pwHash,'AES-GCM',false,['decrypt']);
+    var pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:iv},key,ct);
+    return new TextDecoder().decode(pt);
+}
+
+async function process(action){
+    var level=document.getElementById('level').value;
+    var msg=document.getElementById('message').value;
+    var password=document.getElementById('password').value;
+    var result='';
+    try{
+        if(level==='1'){
+            result=(action==='encrypt')?caesar(msg,3,false):caesar(msg,3,true);
+        }else if(level==='2'){
+            if(!password){ alert('Şifre giriniz'); return; }
+            result=(action==='encrypt')?xorEncrypt(msg,password):xorDecrypt(msg,password);
+        }else{
+            if(!password){ alert('Şifre giriniz'); return; }
+            if(action==='encrypt'){
+                result=await aesEncrypt(msg,password);
+            }else{
+                result=await aesDecrypt(msg,password);
+            }
+        }
+        document.getElementById('result').value=result;
+    }catch(e){
+        alert('İşlem başarısız: '+e);
+    }
+}
+</script>
+</body>
+</html>
